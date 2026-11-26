@@ -24,11 +24,13 @@ from nacl.signing import SigningKey
 
 CONTEXT = b"Telesys update metadata v1\n"
 APP = "suporte-telesys"
-# arquivo da release -> (plataforma, arquitetura, formato) do cliente
+# arquivo da release -> (plataforma, arquitetura, formato) do cliente. O prefixo é o nome
+# do aplicativo da geração (job telesys-rename-assets troca o "rustdesk-" do build).
+PREFIX = r"^[A-Za-z0-9._-]+-[0-9.]+-"
 PATTERNS = [
-    (re.compile(r"^rustdesk-[0-9.]+-x86_64\.exe$"), ("windows", "x86_64", "exe")),
-    (re.compile(r"^rustdesk-[0-9.]+-aarch64\.exe$"), ("windows", "aarch64", "exe")),
-    (re.compile(r"^rustdesk-[0-9.]+-x86-sciter\.exe$"), ("windows", "x86", "exe")),
+    (re.compile(PREFIX + r"x86_64\.exe$"), ("windows", "x86_64", "exe")),
+    (re.compile(PREFIX + r"aarch64\.exe$"), ("windows", "aarch64", "exe")),
+    (re.compile(PREFIX + r"x86-sciter\.exe$"), ("windows", "x86", "exe")),
 ]
 
 

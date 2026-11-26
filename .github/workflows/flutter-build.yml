@@ -835,12 +835,66 @@ jobs:
           files: |
             ./SignOutput/rustdesk-*.exe
 
+  # Telesys: os instaladores saem como rustdesk-<versão>-<arq>.<ext>; aqui, depois de todos
+  # os builds, a release passa a usar o nome do aplicativo da geração ("app-name" de
+  # res/telesys/custom.json, senão TELESYS_APP_NAME, senão Suporte-Telesys):
+  # Suporte-Telesys-1.5.3-x86_64.exe. Roda antes de telesys-update-metadata, que assina
+  # os nomes finais.
+  telesys-rename-assets:
+    needs:
+      - build-for-windows-flutter
+      - build-for-windows-sciter
+      - build-for-macOS
+      - build-rustdesk-android
+      - build-rustdesk-android-universal
+      - build-rustdesk-linux
+      - build-rustdesk-linux-sciter
+      - build-appimage
+      - build-flatpak
+    if: ${{ always() && inputs.upload-artifact }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: res/telesys
+
+      - name: Rename release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          app=$(jq -r '."app-name" // empty' res/telesys/custom.json 2>/dev/null || true)
+          [ -n "$app" ] || app="$TELESYS_APP_NAME"
+          [ -n "$app" ] || app="Suporte-Telesys"
+          prefix=$(printf '%s' "$app" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^[-.]+//; s/-+$//' | cut -c1-60)
+          [ -n "$prefix" ] || prefix="Suporte-Telesys"
+          echo "Prefixo dos arquivos: $prefix"
+          if ! gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG_NAME" > release.json 2>/dev/null; then
+            echo "Release $TAG_NAME não existe (nenhum build publicou): nada a renomear."
+            exit 0
+          fi
+          [ "$prefix" != "rustdesk" ] || exit 0
+          jq -r '.assets[].name' release.json > names.txt
+          jq -r '.assets[] | select(.name | startswith("rustdesk-")) | "\(.id) \(.name)"' release.json |
+          while read -r id name; do
+            new="$prefix-${name#rustdesk-}"
+            if grep -qxF "$new" names.txt; then
+              echo "já existe, mantido: $name"
+              continue
+            fi
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$id" -f name="$new" --jq .name
+          done
+
   # Telesys: metadados assinados da atualização automática (src/updater/telesys.rs).
   # Só roda de fato quando o branch da geração traz res/telesys/update.json com linha
   # e build (gerador do painel com "Atualização automática"); no master é {}.
   # Não publica nada se algum build do Windows falhou (atualização parcial).
   telesys-update-metadata:
-    needs: [build-for-windows-flutter, build-for-windows-sciter]
+    needs: [build-for-windows-flutter, build-for-windows-sciter, telesys-rename-assets]
     if: ${{ !cancelled() && inputs.upload-artifact && !contains(needs.*.result, 'failure') && (needs.build-for-windows-flutter.result == 'success' || needs.build-for-windows-sciter.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
@@ -870,7 +924,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p ./telesys-update
-          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --dir ./telesys-update --pattern 'rustdesk-*.exe'
+          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --dir ./telesys-update --pattern '*.exe'
           ls -l ./telesys-update
 
       - name: Sign update metadata
