@@ -11,7 +11,7 @@ on:
         type: string
         default: ""
       platforms:
-        description: "Plataformas: windows,macos,linux,android"
+        description: "Plataformas: windows,macos,linux,android (Windows: win-x64,win-arm64,win-x86 e win-exe,win-msi; sem eles = todos)"
         type: string
         default: "windows,macos,linux,android"
 

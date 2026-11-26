@@ -143,22 +143,68 @@ jobs:
     needs: [validate-update-metadata-keys]
     uses: ./.github/workflows/bridge.yml
 
+  # Telesys: o que compilar no Windows. Opções em inputs.platforms junto com "windows":
+  # arquitetura win-x64, win-arm64, win-x86 e formato win-exe, win-msi. Sem nenhuma
+  # delas no grupo, vale tudo (comportamento original). 32 bits (Sciter) só gera .exe.
+  windows-plan:
+    runs-on: ubuntu-latest
+    outputs:
+      flutter: ${{ steps.plan.outputs.flutter }}
+      topmost: ${{ steps.plan.outputs.topmost }}
+      x86: ${{ steps.plan.outputs.x86 }}
+      exe: ${{ steps.plan.outputs.exe }}
+      msi: ${{ steps.plan.outputs.msi }}
+    steps:
+      - name: Plan Windows builds
+        id: plan
+        shell: bash
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          p=",${PLATFORMS// /},"
+          has() { [[ "$p" == *",$1,"* ]]; }
+          x64=false; arm=false; x86=false; exe=false; msi=false
+          if has windows; then
+            if has win-x64 || has win-arm64 || has win-x86; then
+              has win-x64 && x64=true; has win-arm64 && arm=true; has win-x86 && x86=true
+            else
+              x64=true; arm=true; x86=true
+            fi
+            if has win-exe || has win-msi; then
+              has win-exe && exe=true; has win-msi && msi=true
+            else
+              exe=true; msi=true
+            fi
+          fi
+          [[ $exe == true ]] || x86=false
+          flutter=(); topmost=()
+          if [[ $x64 == true ]]; then
+            flutter+=('{"target":"x86_64-pc-windows-msvc","os":"windows-2022","arch":"x86_64","flutter-arch":"x64","vcpkg-triplet":"x64-windows-static","build-args":"--vram"}')
+            topmost+=('{"target":"windows-2022","platform":"x64"}')
+          fi
+          if [[ $arm == true ]]; then
+            # vram is x86/x64-only (NVENC needs CUDA, Intel MediaSDK needs __rdtsc);
+            # no NV/Intel/AMD hardware exists on Windows-on-ARM, so vram stays disabled here.
+            flutter+=('{"target":"aarch64-pc-windows-msvc","os":"windows-11-arm","arch":"aarch64","flutter-arch":"arm64","vcpkg-triplet":"arm64-windows-static","build-args":""}')
+            topmost+=('{"target":"windows-11-arm","platform":"ARM64"}')
+          fi
+          join() { local IFS=,; echo "[$*]"; }
+          {
+            echo "flutter=$(join "${flutter[@]}")"
+            echo "topmost=$(join "${topmost[@]}")"
+            echo "x86=$x86"
+            echo "exe=$exe"
+            echo "msi=$msi"
+          } | tee -a "$GITHUB_OUTPUT"
+
   build-RustDeskTempTopMostWindow:
-    needs: [validate-update-metadata-keys]
-    if: ${{ contains(inputs.platforms, 'windows') }}
+    needs: [validate-update-metadata-keys, windows-plan]
+    if: ${{ needs.windows-plan.outputs.topmost != '[]' }}
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     strategy:
       fail-fast: false
       matrix:
-        job:
-          - {
-              target: windows-2022,
-              platform: x64,
-            }
-          - {
-              target: windows-11-arm,
-              platform: ARM64,
-            }
+        job: ${{ fromJSON(needs.windows-plan.outputs.topmost) }}
     with:
       upload-artifact: ${{ inputs.upload-artifact }}
       target: ${{ matrix.job.target }}
@@ -168,33 +214,14 @@ jobs:
 
   build-for-windows-flutter:
     name: ${{ matrix.job.target }}
-    needs: [build-RustDeskTempTopMostWindow, generate-bridge]
-    if: ${{ contains(inputs.platforms, 'windows') }}
+    needs: [windows-plan, build-RustDeskTempTopMostWindow, generate-bridge]
+    if: ${{ needs.windows-plan.outputs.flutter != '[]' }}
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
       matrix:
-        job:
-          # - { target: i686-pc-windows-msvc        , os: windows-2022                  }
-          # - { target: x86_64-pc-windows-gnu       , os: windows-2022                  }
-          - {
-              target: x86_64-pc-windows-msvc,
-              os: windows-2022,
-              arch: x86_64,
-              flutter-arch: x64,
-              vcpkg-triplet: x64-windows-static,
-              build-args: "--vram",
-            }
-          - {
-              target: aarch64-pc-windows-msvc,
-              os: windows-11-arm,
-              arch: aarch64,
-              flutter-arch: arm64,
-              vcpkg-triplet: arm64-windows-static,
-              # vram is x86/x64-only (NVENC needs CUDA, Intel MediaSDK needs __rdtsc);
-              # no NV/Intel/AMD hardware exists on Windows-on-ARM, so vram stays disabled here.
-              build-args: "",
-            }
+        # Telesys: x86_64 e/ou aarch64, conforme o job windows-plan.
+        job: ${{ fromJSON(needs.windows-plan.outputs.flutter) }}
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
@@ -478,7 +505,7 @@ jobs:
 
       - name: Build self-extracted executable
         shell: bash
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: env.UPLOAD_ARTIFACT == 'true' && needs.windows-plan.outputs.exe == 'true'
         run: |
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
@@ -489,6 +516,7 @@ jobs:
           mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
 
       - name: Add MSBuild to PATH
+        if: needs.windows-plan.outputs.msi == 'true'
         uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
         with:
           # Select the MSBuild process architecture; -p:Platform sets the MSI target.
@@ -501,8 +529,9 @@ jobs:
         # Builds the MSI for the matrix arch. res/msi (WiX v4 + native CustomActions) carries
         # both x64 and ARM64 platform configs; WcaUtil/DUtil ship arm64 libs. msbuild platform
         # is x64 / ARM64; the produced Package.msi is globbed since its bin/<platform>/ dir varies.
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: env.UPLOAD_ARTIFACT == 'true' && needs.windows-plan.outputs.msi == 'true'
         run: |
+          New-Item -ItemType Directory -Force -Path ./SignOutput | Out-Null
           pushd ./res/msi
           python preprocess.py --arp -d ../../rustdesk
           nuget restore msi.sln
@@ -530,7 +559,7 @@ jobs:
         # Building the arm64 template on the native arm64 runner makes the ARM
         # package available: the build agents are x64 and cannot run
         # preprocess.py against an ARM exe.
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: env.UPLOAD_ARTIFACT == 'true' && needs.windows-plan.outputs.msi == 'true'
         run: |
           git checkout -- res/msi
           cp -r ./rustdesk ./rustdesk-msi-template
@@ -554,7 +583,7 @@ jobs:
           rm -r -fo ./rustdesk-msi-template
 
       - name: Upload unsigned msi template
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: env.UPLOAD_ARTIFACT == 'true' && needs.windows-plan.outputs.msi == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rustdesk-unsigned-msi-template-${{ matrix.job.arch }}
@@ -567,7 +596,7 @@ jobs:
           BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./SignOutput
 
       - name: Upload signed Windows Flutter EXE
-        if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA == 'true' && env.SIGN_BASE_URL != '-2'
+        if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA == 'true' && env.SIGN_BASE_URL != '-2' && needs.windows-plan.outputs.exe == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-flutter-${{ matrix.job.arch }}-exe
@@ -575,7 +604,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload signed Windows Flutter MSI
-        if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA == 'true' && env.SIGN_BASE_URL != '-2'
+        if: env.UPLOAD_ARTIFACT == 'true' && env.PUBLISH_UPDATE_METADATA == 'true' && env.SIGN_BASE_URL != '-2' && needs.windows-plan.outputs.msi == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-flutter-${{ matrix.job.arch }}-msi
@@ -595,8 +624,8 @@ jobs:
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
-    needs: [validate-update-metadata-keys]
-    if: ${{ contains(inputs.platforms, 'windows') }}
+    needs: [validate-update-metadata-keys, windows-plan]
+    if: ${{ needs.windows-plan.outputs.x86 == 'true' }}
     runs-on: ${{ matrix.job.os }}
     # Temporarily disable this action due to additional test is needed.
     # if: false
