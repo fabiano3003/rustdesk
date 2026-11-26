@@ -12,6 +12,10 @@ on:
       publish-update-metadata:
         type: boolean
         default: false
+      # Telesys: plataformas a compilar (windows, macos, linux, android, ios, sbom, unsigned)
+      platforms:
+        type: string
+        default: "windows,macos,linux,android,ios,sbom,unsigned"
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -107,6 +111,7 @@ jobs:
 
   generate-sbom:
     needs: [validate-update-metadata-keys]
+    if: ${{ contains(inputs.platforms, 'sbom') }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -140,6 +145,7 @@ jobs:
 
   build-RustDeskTempTopMostWindow:
     needs: [validate-update-metadata-keys]
+    if: ${{ contains(inputs.platforms, 'windows') }}
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     strategy:
       fail-fast: false
@@ -163,6 +169,7 @@ jobs:
   build-for-windows-flutter:
     name: ${{ matrix.job.target }}
     needs: [build-RustDeskTempTopMostWindow, generate-bridge]
+    if: ${{ contains(inputs.platforms, 'windows') }}
     runs-on: ${{ matrix.job.os }}
     strategy:
       fail-fast: false
@@ -589,6 +596,7 @@ jobs:
   build-for-windows-sciter:
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     needs: [validate-update-metadata-keys]
+    if: ${{ contains(inputs.platforms, 'windows') }}
     runs-on: ${{ matrix.job.os }}
     # Temporarily disable this action due to additional test is needed.
     # if: false
@@ -799,7 +807,7 @@ jobs:
             ./SignOutput/rustdesk-*.exe
 
   build-rustdesk-ios:
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && contains(inputs.platforms, 'ios') }}
     name: build rustdesk ios ipa
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -924,6 +932,7 @@ jobs:
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
+    if: ${{ contains(inputs.platforms, 'macos') }}
     strategy:
       fail-fast: false
       matrix:
@@ -1351,7 +1360,7 @@ jobs:
       - build-for-windows-flutter
       - build-for-windows-sciter
     runs-on: ubuntu-latest
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && contains(inputs.platforms, 'unsigned') }}
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1433,6 +1442,7 @@ jobs:
 
   build-rustdesk-android:
     needs: [generate-bridge]
+    if: ${{ contains(inputs.platforms, 'android') }}
     name: build rustdesk android apk ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     strategy:
@@ -1741,7 +1751,7 @@ jobs:
   build-rustdesk-android-universal:
     needs: [build-rustdesk-android]
     name: build rustdesk android universal apk
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && contains(inputs.platforms, 'android') }}
     runs-on: ubuntu-24.04
     env:
       reltype: release
@@ -1925,6 +1935,7 @@ jobs:
 
   build-rustdesk-linux:
     needs: [generate-bridge]
+    if: ${{ contains(inputs.platforms, 'linux') }}
     name: build rustdesk linux ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.on }}
     strategy:
@@ -2363,7 +2374,7 @@ jobs:
             res/rustdesk-${{ env.VERSION }}*.zst
 
   build-rustdesk-linux-sciter:
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && contains(inputs.platforms, 'linux') }}
     needs: [validate-update-metadata-keys]
     runs-on: ${{ matrix.job.on }}
     name: build-rustdesk-linux-sciter ${{ matrix.job.target }}
@@ -2609,7 +2620,7 @@ jobs:
     name: Build appimage ${{ matrix.job.target }}
     needs: [build-rustdesk-linux]
     runs-on: ubuntu-22.04
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && contains(inputs.platforms, 'linux') }}
     strategy:
       fail-fast: false
       matrix:
@@ -2664,7 +2675,7 @@ jobs:
       - build-rustdesk-linux
       - build-rustdesk-linux-sciter
     runs-on: ${{ matrix.job.on }}
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && contains(inputs.platforms, 'linux') }}
     strategy:
       fail-fast: false
       matrix:

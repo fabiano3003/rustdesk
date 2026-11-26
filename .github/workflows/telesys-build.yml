@@ -1,7 +1,19 @@
 name: Telesys Build
+# Disparado à mão ou pelo gerador do painel TelesysRemote, que cria o branch build/<id>
+# com res/telesys/custom.json e os ícones do cliente e dispara este workflow nele.
+run-name: "Telesys Build ${{ inputs.build_id || github.ref_name }}"
 
 on:
   workflow_dispatch:
+    inputs:
+      build_id:
+        description: "Id da geração (vazio = build padrão, release telesys)"
+        type: string
+        default: ""
+      platforms:
+        description: "Plataformas: windows,macos,linux,android"
+        type: string
+        default: "windows,macos,linux,android"
 
 permissions:
   contents: write
@@ -12,4 +24,5 @@ jobs:
     secrets: inherit
     with:
       upload-artifact: true
-      upload-tag: "telesys"
+      upload-tag: ${{ inputs.build_id != '' && format('build-{0}', inputs.build_id) || 'telesys' }}
+      platforms: ${{ inputs.platforms }}

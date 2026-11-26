@@ -2523,19 +2523,78 @@ fn load_build_custom_client() {
     if let Some(app_name) = build_value(option_env!("TELESYS_APP_NAME")) {
         *config::APP_NAME.write().unwrap() = app_name.to_owned();
     }
-    let mut settings = config::OVERWRITE_SETTINGS.write().unwrap();
-    for (key, value) in [
-        (
-            keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,
-            option_env!("TELESYS_RENDEZVOUS_SERVER"),
-        ),
-        (keys::OPTION_KEY, option_env!("TELESYS_RS_PUB_KEY")),
-        (keys::OPTION_API_SERVER, option_env!("TELESYS_API_SERVER")),
-        (keys::OPTION_RELAY_SERVER, option_env!("TELESYS_RELAY_SERVER")),
-    ] {
-        if let Some(value) = build_value(value) {
-            settings.insert(key.to_owned(), value.to_owned());
+    {
+        let mut settings = config::OVERWRITE_SETTINGS.write().unwrap();
+        for (key, value) in [
+            (
+                keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,
+                option_env!("TELESYS_RENDEZVOUS_SERVER"),
+            ),
+            (keys::OPTION_KEY, option_env!("TELESYS_RS_PUB_KEY")),
+            (keys::OPTION_API_SERVER, option_env!("TELESYS_API_SERVER")),
+            (keys::OPTION_RELAY_SERVER, option_env!("TELESYS_RELAY_SERVER")),
+        ] {
+            if let Some(value) = build_value(value) {
+                settings.insert(key.to_owned(), value.to_owned());
+            }
         }
+    }
+    load_build_custom_client_json(include_str!("../res/telesys/custom.json"));
+}
+
+// Telesys: res/telesys/custom.json tem o mesmo JSON do custom.txt do gerador Pro (sem
+// assinatura, porque entra no binário na compilação). É gravado pelo gerador do painel
+// TelesysRemote no branch build/<id>.
+fn load_build_custom_client_json(json: &str) {
+    let Ok(mut data) =
+        serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(json)
+    else {
+        log::error!("Failed to parse res/telesys/custom.json");
+        return;
+    };
+    if data.is_empty() {
+        return;
+    }
+    if let Some(app_name) = data.remove("app-name") {
+        if let Some(app_name) = app_name.as_str() {
+            *config::APP_NAME.write().unwrap() = app_name.to_owned();
+        }
+    }
+    let mut map_display_settings = HashMap::new();
+    for s in keys::KEYS_DISPLAY_SETTINGS {
+        map_display_settings.insert(s.replace("_", "-"), s);
+    }
+    let mut map_local_settings = HashMap::new();
+    for s in keys::KEYS_LOCAL_SETTINGS {
+        map_local_settings.insert(s.replace("_", "-"), s);
+    }
+    let mut map_settings = HashMap::new();
+    for s in keys::KEYS_SETTINGS {
+        map_settings.insert(s.replace("_", "-"), s);
+    }
+    let mut buildin_settings = HashMap::new();
+    for s in keys::KEYS_BUILDIN_SETTINGS {
+        buildin_settings.insert(s.replace("_", "-"), s);
+    }
+    for (name, is_override) in [("default-settings", false), ("override-settings", true)] {
+        if let Some(settings) = data.remove(name) {
+            read_custom_client_advanced_settings(
+                settings,
+                &map_display_settings,
+                &map_local_settings,
+                &map_settings,
+                &buildin_settings,
+                is_override,
+            );
+        }
+    }
+    for (k, v) in data {
+        if let Some(v) = v.as_str() {
+            config::HARD_SETTINGS
+                .write()
+                .unwrap()
+                .insert(k, v.to_owned());
+        };
     }
 }
 
