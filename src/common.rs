@@ -2540,12 +2540,41 @@ fn load_build_custom_client() {
         }
     }
     load_build_custom_client_json(include_str!("../res/telesys/custom.json"));
-    // Telesys: o atualizador do RustDesk baixaria o cliente oficial (api.rustdesk.com) e o
-    // computador perderia o servidor Telesys. Fica travado até existir o canal próprio.
+    // Telesys: o atualizador oficial nunca roda no cliente personalizado (baixaria o RustDesk
+    // oficial e o computador perderia o servidor Telesys). Só o canal próprio
+    // (updater/telesys.rs), e só no Windows em build com linha de atualização.
+    let auto_update = cfg!(target_os = "windows") && telesys_update_build().is_some();
     config::OVERWRITE_SETTINGS.write().unwrap().insert(
         keys::OPTION_ALLOW_AUTO_UPDATE.to_owned(),
-        "N".to_owned(),
+        if auto_update { "Y" } else { "N" }.to_owned(),
     );
+}
+
+/// Telesys: linha de atualização e número deste build, de `res/telesys/update.json`
+/// (`{"channel": "clientes", "build": 12}`), gravado pelo gerador do painel no branch
+/// `build/<id>`. No master é `{}`: sem atualização automática.
+pub fn telesys_update_build() -> Option<(&'static str, u64)> {
+    #[derive(serde_derive::Deserialize, Default)]
+    struct UpdateBuild {
+        #[serde(default)]
+        channel: String,
+        #[serde(default)]
+        build: u64,
+    }
+    static INFO: std::sync::OnceLock<UpdateBuild> = std::sync::OnceLock::new();
+    let info = INFO.get_or_init(|| {
+        serde_json::from_str(include_str!("../res/telesys/update.json")).unwrap_or_else(|e| {
+            log::error!("Failed to parse res/telesys/update.json: {}", e);
+            UpdateBuild::default()
+        })
+    });
+    let valid_channel = !info.channel.is_empty()
+        && info.channel.len() <= 32
+        && info
+            .channel
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    (valid_channel && info.build > 0).then(|| (info.channel.as_str(), info.build))
 }
 
 // Telesys: res/telesys/custom.json tem o mesmo JSON do custom.txt do gerador Pro (sem

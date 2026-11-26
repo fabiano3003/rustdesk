@@ -1,5 +1,8 @@
 mod artifact;
 mod download;
+// Telesys: canal de atualização próprio do cliente personalizado.
+#[cfg(target_os = "windows")]
+mod telesys;
 
 use crate::common::do_check_software_update;
 use artifact::verified_update_artifact_from_release_page_url;
@@ -191,6 +194,15 @@ fn check_update(manually: bool) -> ResultType<()> {
     // The shared check_update() path is only used for manual update checks from the GUI.
     #[cfg(target_os = "macos")]
     if !manually {
+        return Ok(());
+    }
+    // Telesys: o cliente personalizado nunca consulta api.rustdesk.com (instalaria o
+    // RustDesk oficial); usa o canal próprio, que só existe no Windows.
+    if crate::is_custom_client() {
+        #[cfg(target_os = "windows")]
+        if manually || config::Config::get_bool_option(keys::OPTION_ALLOW_AUTO_UPDATE) {
+            return telesys::check_update();
+        }
         return Ok(());
     }
     #[cfg(target_os = "windows")]

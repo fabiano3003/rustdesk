@@ -835,6 +835,71 @@ jobs:
           files: |
             ./SignOutput/rustdesk-*.exe
 
+  # Telesys: metadados assinados da atualização automática (src/updater/telesys.rs).
+  # Só roda de fato quando o branch da geração traz res/telesys/update.json com linha
+  # e build (gerador do painel com "Atualização automática"); no master é {}.
+  # Não publica nada se algum build do Windows falhou (atualização parcial).
+  telesys-update-metadata:
+    needs: [build-for-windows-flutter, build-for-windows-sciter]
+    if: ${{ !cancelled() && inputs.upload-artifact && !contains(needs.*.result, 'failure') && (needs.build-for-windows-flutter.result == 'success' || needs.build-for-windows-sciter.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check update channel
+        id: channel
+        shell: bash
+        run: |
+          if jq -e '((.channel // "") != "") and ((.build // 0) > 0)' res/telesys/update.json > /dev/null; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            jq -c . res/telesys/update.json
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Build sem linha de atualização: nada a assinar."
+          fi
+
+      - name: Download Windows installers
+        if: steps.channel.outputs.enabled == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ./telesys-update
+          gh release download "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --dir ./telesys-update --pattern 'rustdesk-*.exe'
+          ls -l ./telesys-update
+
+      - name: Sign update metadata
+        if: steps.channel.outputs.enabled == 'true'
+        shell: bash
+        env:
+          TELESYS_UPDATE_ED25519_SEED: ${{ secrets.TELESYS_UPDATE_ED25519_SEED }}
+        run: |
+          if [ -z "$TELESYS_UPDATE_ED25519_SEED" ]; then
+            echo "::error::Secret TELESYS_UPDATE_ED25519_SEED não configurado."
+            exit 1
+          fi
+          python3 -m pip install --quiet pynacl
+          python3 res/telesys/sign_update.py --update-json res/telesys/update.json \
+            --version "$VERSION" --repo "$GITHUB_REPOSITORY" --tag "$TAG_NAME" \
+            --dir ./telesys-update \
+            --out-metadata ./telesys-update.json --out-signature ./telesys-update.json.sig
+
+      - name: Upload update metadata
+        if: steps.channel.outputs.enabled == 'true'
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        with:
+          prerelease: true
+          fail_on_unmatched_files: true
+          tag_name: ${{ env.TAG_NAME }}
+          files: |
+            ./telesys-update.json
+            ./telesys-update.json.sig
+
   build-rustdesk-ios:
     if: ${{ inputs.upload-artifact && contains(inputs.platforms, 'ios') }}
     name: build rustdesk ios ipa
