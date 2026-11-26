@@ -3,6 +3,9 @@ name: Telesys Build
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   telesys-build:
     uses: ./.github/workflows/flutter-build.yml
