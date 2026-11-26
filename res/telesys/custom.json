@@ -1,1 +1,9 @@
-{}
+{
+  "app-name": "Suporte-Telesys",
+  "password": "00RU6aW4g+RPPC1oIp2KZDLtk/qev7gEByE7F0Hi56Xw0=",
+  "salt": "teste459e5593",
+  "override-settings": {
+    "hide-help-cards": "Y",
+    "verification-method": "use-both-passwords"
+  }
+}
