@@ -208,12 +208,30 @@ fn fetch_check(url: &str) -> ResultType<CheckResponse> {
     Ok(serde_json::from_slice(&bytes)?)
 }
 
+/// Marca no HKLM que a instalação já se atualiza sozinha: o atualizador do Telesys
+/// (UpdateTelesys, update.exe) só reinstala, pedindo administrador, quando não acha
+/// este marcador. Roda no serviço (SYSTEM); falha só vai para o log.
+fn write_install_marker(channel: &str, build: u64) {
+    use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
+    let res = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .create_subkey("SOFTWARE\\Telesys\\Suporte")
+        .and_then(|(key, _)| {
+            key.set_value("UpdateChannel", &channel.to_owned())?;
+            key.set_value("UpdateBuild", &u32::try_from(build).unwrap_or(u32::MAX))?;
+            key.set_value("AppName", &crate::get_app_name())
+        });
+    if let Err(e) = res {
+        log::warn!("Telesys update: failed to write install marker: {}", e);
+    }
+}
+
 /// Chamado por `updater::check_update` no lugar do atualizador oficial.
 pub(super) fn check_update() -> ResultType<()> {
     let Some((channel, build)) = crate::common::telesys_update_build() else {
         log::debug!("Telesys update: build without update channel");
         return Ok(());
     };
+    write_install_marker(channel, build);
     // Roda no processo de serviço: lê a configuração direto (como o heartbeat em hbbs_http/sync.rs).
     let api = crate::common::get_api_server(
         config::Config::get_option("api-server"),

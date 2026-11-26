@@ -1667,6 +1667,11 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     // MSI and EXE installations use different registry layouts, so MSI-to-EXE upgrades are not supported.
     let (installed_subkey, _, _, _) = get_install_info();
     if get_windows_installer_state(&installed_subkey)? == Some(true) {
+        // Telesys: os clientes antigos foram instalados por MSI; o cliente personalizado
+        // atualiza essa instalação por cima (mesmo caminho do --update) em vez de recusar.
+        if crate::common::is_custom_client() {
+            return update_me(debug);
+        }
         bail!("Cannot install the EXE package over an existing MSI installation");
     }
     let uninstall_str = get_uninstall(false, false)?;
