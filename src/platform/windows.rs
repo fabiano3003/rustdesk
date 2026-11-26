@@ -1669,10 +1669,16 @@ pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> Res
     if get_windows_installer_state(&installed_subkey)? == Some(true) {
         // Telesys: os clientes antigos foram instalados por MSI; o cliente personalizado
         // atualiza essa instalação por cima (mesmo caminho do --update) em vez de recusar.
-        if crate::common::is_custom_client() {
+        // Registro do MSI sem os arquivos (removido pela metade): segue a instalação
+        // normal, cujo get_uninstall desinstala o MSI (msiexec /X) antes de instalar.
+        if !crate::common::is_custom_client() {
+            bail!("Cannot install the EXE package over an existing MSI installation");
+        }
+        let (_, _, _, installed_exe) = get_install_info();
+        if std::path::Path::new(&installed_exe).exists() {
             return update_me(debug);
         }
-        bail!("Cannot install the EXE package over an existing MSI installation");
+        log::warn!("MSI registration found without {installed_exe}; installing over it");
     }
     let uninstall_str = get_uninstall(false, false)?;
     let mut path = path.trim_end_matches('\\').to_owned();
