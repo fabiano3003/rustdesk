@@ -1,1 +1,18 @@
-{}
+{
+  "app-name": "Suporte-Telesys",
+  "conn-type": "incoming",
+  "disable-ab": "Y",
+  "disable-account": "Y",
+  "disable-settings": "Y",
+  "override-settings": {
+    "api-server": "https://suporte.telesys.com.br",
+    "custom-rendezvous-server": "suporte.telesys.com.br:21116",
+    "hide-powered-by-me": "Y",
+    "hide-remote-printer-settings": "Y",
+    "key": "rLwB9MW45uIFWpoQS4Sbl9RmjFAAigSq+KksXdV3YWM=",
+    "relay-server": "suporte.telesys.com.br:21117",
+    "remove-preset-password-warning": "Y"
+  },
+  "password": "00e2mGfhA/ijgBXg7voe/A8JuMjxhNYUCfHsVxizBtoMQ=",
+  "salt": "jTdGnNKpMKrQ3S5V"
+}
