@@ -2515,7 +2515,32 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
+// Telesys: servidor e nome fixados no build (secrets TELESYS_* do GitHub Actions).
+fn load_build_custom_client() {
+    fn build_value(v: Option<&'static str>) -> Option<&'static str> {
+        v.map(str::trim).filter(|v| !v.is_empty())
+    }
+    if let Some(app_name) = build_value(option_env!("TELESYS_APP_NAME")) {
+        *config::APP_NAME.write().unwrap() = app_name.to_owned();
+    }
+    let mut settings = config::OVERWRITE_SETTINGS.write().unwrap();
+    for (key, value) in [
+        (
+            keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,
+            option_env!("TELESYS_RENDEZVOUS_SERVER"),
+        ),
+        (keys::OPTION_KEY, option_env!("TELESYS_RS_PUB_KEY")),
+        (keys::OPTION_API_SERVER, option_env!("TELESYS_API_SERVER")),
+        (keys::OPTION_RELAY_SERVER, option_env!("TELESYS_RELAY_SERVER")),
+    ] {
+        if let Some(value) = build_value(value) {
+            settings.insert(key.to_owned(), value.to_owned());
+        }
+    }
+}
+
 pub fn load_custom_client() {
+    load_build_custom_client();
     #[cfg(debug_assertions)]
     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
         read_custom_client(data.trim());
@@ -2614,6 +2639,7 @@ pub fn get_dst_align_rgba() -> usize {
 }
 
 pub fn read_custom_client(config: &str) {
+    load_build_custom_client();
     let Ok(data) = decode64(config) else {
         log::error!("Failed to decode custom client config");
         return;

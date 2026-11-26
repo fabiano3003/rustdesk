@@ -61,6 +61,12 @@ env:
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   PUBLISH_UPDATE_METADATA: "${{ inputs.publish-update-metadata }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
+  # Telesys: lidos em tempo de compilação por load_build_custom_client (src/common.rs)
+  TELESYS_RENDEZVOUS_SERVER: "${{ secrets.TELESYS_RENDEZVOUS_SERVER }}"
+  TELESYS_RS_PUB_KEY: "${{ secrets.TELESYS_RS_PUB_KEY }}"
+  TELESYS_API_SERVER: "${{ secrets.TELESYS_API_SERVER }}"
+  TELESYS_RELAY_SERVER: "${{ secrets.TELESYS_RELAY_SERVER }}"
+  TELESYS_APP_NAME: "${{ secrets.TELESYS_APP_NAME }}"
 
 jobs:
   validate-update-metadata-keys:
