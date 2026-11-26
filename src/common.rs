@@ -2540,6 +2540,12 @@ fn load_build_custom_client() {
         }
     }
     load_build_custom_client_json(include_str!("../res/telesys/custom.json"));
+    // Telesys: o atualizador do RustDesk baixaria o cliente oficial (api.rustdesk.com) e o
+    // computador perderia o servidor Telesys. Fica travado até existir o canal próprio.
+    config::OVERWRITE_SETTINGS.write().unwrap().insert(
+        keys::OPTION_ALLOW_AUTO_UPDATE.to_owned(),
+        "N".to_owned(),
+    );
 }
 
 // Telesys: res/telesys/custom.json tem o mesmo JSON do custom.txt do gerador Pro (sem
